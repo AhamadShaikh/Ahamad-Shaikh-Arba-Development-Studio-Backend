@@ -3,77 +3,92 @@ const User = require("../model/userModel");
 const router = express.Router();
 const bcrypt = require("bcrypt")
 const jwt = require("jsonwebtoken")
-const blacklistToken = require("../model/blacklist")
+const blacklistToken = require("../model/blacklist");
+const middleware = require("../middleware/auth");
 
 router.post("/register", async (req, res) => {
-    const { password } = req.body
-    try {
-        const newPassword = await bcrypt.hash(password, 10)
-        const user = await User.create({ ...req.body, password: newPassword })
-        if (!user) {
-            res.status(400).json({ msg: "regitration failed" })
-        }
-        res.status(200).json({ msg: "successfully registered" })
-    } catch (error) {
-        res.status(400).json({ msg: "registration failed" })
+  const { password } = req.body
+  try {
+    const newPassword = await bcrypt.hash(password, 10)
+    const user = await User.create({ ...req.body, password: newPassword })
+    if (!user) {
+      res.status(400).json({ msg: "regitration failed" })
     }
+    res.status(200).json({ msg: "successfully registered" })
+  } catch (error) {
+    res.status(400).json({ msg: "registration failed" })
+  }
 })
 
 router.post("/login", async (req, res) => {
-    const { email, password } = req.body;
-    try {
-      const existingUser = await User.findOne({ email });
-  
-      if (!existingUser) {
-        return res.status(400).json({ msg: "User not found" });
-      }
-  
-      const verify = await bcrypt.compare(password, existingUser.password);
-  
-      if (!verify) {
-        return res.status(401).json({ msg: "Wrong credentials" });
-      }
-  
-      const token = jwt.sign(
-        { userId: existingUser._id, name: existingUser.name },
-        "ironman",
-      );
-  
-      const refreshToken = jwt.sign(
-        { userId: existingUser._id, name: existingUser.name },
-        "thanos",
-      );
-  
-      res.status(200).json({
-        msg: "Login successful",
-        token,
-        refreshToken,
-      });
-    } catch (error) {
-      res.status(500).json({ msg: "Internal server error" });
+  const { email, password } = req.body;
+  try {
+    const existingUser = await User.findOne({ email });
+
+    if (!existingUser) {
+      return res.status(400).json({ msg: "User not found" });
     }
-  });
-  
+
+    const verify = await bcrypt.compare(password, existingUser.password);
+
+    if (!verify) {
+      return res.status(401).json({ msg: "Wrong credentials" });
+    }
+
+    const token = jwt.sign(
+      { userId: existingUser._id, name: existingUser.name },
+      "ironman",
+    );
+
+    const refreshToken = jwt.sign(
+      { userId: existingUser._id, name: existingUser.name },
+      "thanos",
+    );
+
+    res.status(200).json({
+      msg: "Login successful",
+      token,
+      refreshToken,
+    });
+  } catch (error) {
+    res.status(500).json({ msg: "Internal server error" });
+  }
+});
+
 
 
 router.get("/logout", async (req, res) => {
-    const token = req.headers.authorization?.split(" ")[1]
-    try {
-        if (!token) {
-            return res.status(400).json({ error: 'Token not provided' });
-        }
-        const isBlacklisted = await blacklistToken.exists({ token });
-        if (isBlacklisted) {
-            return res.status(400).json({ error: 'Token has already been invalidated' });
-        }
-
-        await blacklistToken.create({ token });
-
-        res.status(200).json({ msg: 'User has been logged out' });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to log out' });
+  const token = req.headers.authorization?.split(" ")[1]
+  try {
+    if (!token) {
+      return res.status(400).json({ error: 'Token not provided' });
     }
+    const isBlacklisted = await blacklistToken.exists({ token });
+    if (isBlacklisted) {
+      return res.status(400).json({ error: 'Token has already been invalidated' });
+    }
+
+    await blacklistToken.create({ token });
+
+    res.status(200).json({ msg: 'User has been logged out' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to log out' });
+  }
 })
+
+router.get("/myuser", middleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 
 // Forgot Password
 router.post('/forgot-password', async (req, res) => {
@@ -86,10 +101,10 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const token = generateRandomToken(); 
+    const token = generateRandomToken();
 
     user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 3600000; 
+    user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
 
     const transporter = nodemailer.createTransport({
@@ -104,7 +119,7 @@ router.post('/forgot-password', async (req, res) => {
       from: 'your_email@gmail.com',
       to: user.email,
       subject: 'Password Reset Link',
-      text: `Click the following link to reset your password: http://localhost:3000/reset-password/${token}`
+      text: `Click the following link to reset your password: https://gentle-concha-cfd0e9.netlify.app/reset-password/${token}`
     };
 
     await transporter.sendMail(mailOptions);
